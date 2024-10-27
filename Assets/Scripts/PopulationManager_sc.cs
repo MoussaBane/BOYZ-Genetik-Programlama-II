@@ -6,99 +6,94 @@ using System.Linq;
 public class PopulationManager_sc : MonoBehaviour
 {
     public GameObject botPrefab;
-    public int populationSize = 10;
-    private List<GameObject> population = new List<GameObject>();
-    private float trialTime = 10f; // Deneme süresi
-    private int generation = 1;
+    public int populationSize = 50;
+    List<GameObject> population = new List<GameObject>();
+    public static float elapsed = 0;
+    public float trialTime = 5;
+    int generation = 1;
+    GUIStyle guiStyle = new GUIStyle();
 
-    // Start is called before the first frame update
-    private void Start()
+    void OnGUI()
     {
-        // İlk nesil botları oluştur
+        guiStyle.fontSize = 25;
+        guiStyle.normal.textColor = Color.white;
+
+        GUI.BeginGroup(new Rect(10, 10, 250, 150));
+        GUI.Box(new Rect(0, 0, 140, 140), "Stats", guiStyle);
+        GUI.Label(new Rect(10, 25, 200, 30), "Gen: " + generation, guiStyle);
+        GUI.Label(new Rect(10, 50, 200, 30), string.Format("Time: {0:0.00}", elapsed), guiStyle);
+        GUI.Label(new Rect(10, 75, 200, 30), "Population: " + population.Count, guiStyle);
+        GUI.EndGroup();
+    }
+
+    void Start()
+    {
+        // Instantiate population
         for (int i = 0; i < populationSize; i++)
         {
-            Vector3 pos = new Vector3(Random.Range(-10, 10), 1, Random.Range(-10, 10));
-            GameObject bot = Instantiate(botPrefab, pos, Quaternion.identity);
-            population.Add(bot);
+            Vector3 startingPos = new Vector3(
+                this.transform.position.x + Random.Range(-2, 2),
+                this.transform.position.y,
+                this.transform.position.z + Random.Range(-2, 2)
+            );
+
+            GameObject b = Instantiate(botPrefab, startingPos, this.transform.rotation);
+            b.GetComponent<Brain_sc>().Init();
+            population.Add(b);
         }
     }
 
-    // Update is called once per frame
-    private void Update()
+    GameObject Breed(GameObject parent1, GameObject parent2)
     {
-        // Belirlenen sürede yeni nesle geç
-        trialTime -= Time.deltaTime;
-        if (trialTime <= 0)
-        {
-            BreedNewPopulation();
-            trialTime = 10f; // Deneme süresini sıfırla
-        }
-    }
+        Vector3 startingPos = new Vector3(
+            this.transform.position.x + Random.Range(-2, 2),
+            this.transform.position.y,
+            this.transform.position.z + Random.Range(-2, 2)
+        );
 
-    private void BreedNewPopulation()
-    {
-        // Her botun Brain_sc bileşeninin null olmadığını kontrol et
-        foreach (var bot in population)
-        {
-            if (bot.GetComponent<Brain_sc>() == null)
-            {
-                Debug.LogError("Botun Brain_sc bileşeni bulunamadı: " + bot.name);
-                return; // Çık ve işlem yapma
-            }
-        }
-
-        // Botların mesafelerini sıralayın
-        List<GameObject> sortedList = population.OrderByDescending(o => 
-        {
-            var brain = o.GetComponent<Brain_sc>();
-            if (brain != null)
-            {
-                return brain.distanceTravelled; // Geçerli mesafe değerini döndür
-            }
-            return 0; // Null durumunda varsayılan değer döndür
-        }).ToList();
-
-        // Popülasyonu temizle ve yeni nesil oluştur
-        population.Clear();
-        for (int i = sortedList.Count / 2; i < sortedList.Count - 1; i++)
-        {
-            population.Add(Breed(sortedList[i], sortedList[i + 1]));
-            population.Add(Breed(sortedList[i + 1], sortedList[i]));
-        }
-
-        // Yeni jenerasyon için sayacı artır
-        generation++;
-    }
-
-
-    private GameObject Breed(GameObject parent1, GameObject parent2)
-    {
-        Vector3 pos = new Vector3(Random.Range(-10, 10), 1, Random.Range(-10, 10));
-        GameObject offspring = Instantiate(botPrefab, pos, Quaternion.identity);
+        GameObject offspring = Instantiate(botPrefab, startingPos, this.transform.rotation);
         Brain_sc b = offspring.GetComponent<Brain_sc>();
 
-        // DNA'nın yarısını bir ebeveynden, diğer yarısını diğer ebeveynden al
-        b.dna = new DNA_sc(2, 200);
-        for (int i = 0; i < b.dna.genes.Count; i++)
+        // Mutate or combine genes
+        b.Init();
+        if (Random.Range(0, 100) < 1) // mutate with a small probability
         {
-            b.dna.genes[i] = (i < b.dna.genes.Count / 2) ? parent1.GetComponent<Brain_sc>().dna.genes[i] : parent2.GetComponent<Brain_sc>().dna.genes[i];
+            b.dna_sc.Mutate(0.01f); // Example mutation rate
+        }
+        else
+        {
+            b.dna_sc.Combine(parent1.GetComponent<Brain_sc>().dna_sc, parent2.GetComponent<Brain_sc>().dna_sc);
         }
 
         return offspring;
     }
 
-    // private void BreedNewPopulation()
-    // {
-    //     List<GameObject> sortedList = population.OrderByDescending(o => o.GetComponent<Brain_sc>().distanceTravelled).ToList();
-        
-    //     population.Clear();
-    //     for (int i = sortedList.Count / 2; i < sortedList.Count - 1; i++)
-    //     {
-    //         population.Add(Breed(sortedList[i], sortedList[i + 1]));
-    //         population.Add(Breed(sortedList[i + 1], sortedList[i]));
-    //     }
+    void BreedNewPopulation()
+    {
+        List<GameObject> sortedList = population.OrderByDescending(o => o.GetComponent<Brain_sc>().distanceTravelled).ToList();
+        population.Clear();
 
-    //     // Yeni jenerasyon için sayacı artır
-    //     generation++;
-    // }
+        // Keep top performers
+        for (int i = (int)(sortedList.Count / 2.0f) - 1; i < sortedList.Count - 1; i++)
+        {
+            population.Add(Breed(sortedList[i], sortedList[i + 1]));
+            population.Add(Breed(sortedList[i + 1], sortedList[i]));
+        }
+
+        for (int i = 0; i < sortedList.Count; i++)
+        {
+            Destroy(sortedList[i]);
+        }
+        generation++;
+    }
+
+    void Update()
+    {
+        elapsed += Time.deltaTime;
+        if (elapsed >= trialTime)
+        {
+            BreedNewPopulation();
+            elapsed = 0;
+        }
+    }
 }
